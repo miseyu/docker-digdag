@@ -42,5 +42,3 @@ RUN apk add --no-cache curl && \
     apk --no-cache add bash jq && \
     pip --no-cache-dir install --upgrade pip && \
     rm -rf /var/cache/apk/*
-
-ENTRYPOINT ["sh"]
