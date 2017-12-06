@@ -1,49 +1,44 @@
-FROM java:8-jdk
+FROM alpine:3.6
 
-USER root
+ENV LANG C.UTF-8
 
-RUN  apt-get update -y \
-  && apt-get -y install apt-transport-https
+RUN { \
+        echo '#!/bin/sh'; \
+        echo 'set -e'; \
+        echo; \
+        echo 'dirname "$(dirname "$(readlink -f "$(which javac || which java)")")"'; \
+    } > /usr/local/bin/docker-java-home \
+    && chmod +x /usr/local/bin/docker-java-home
 
-ENV NODE_VERSION 8.9.2
+ENV JAVA_HOME /usr/lib/jvm/java-1.8-openjdk
+ENV PATH $PATH:/usr/lib/jvm/java-1.8-openjdk/jre/bin:/usr/lib/jvm/java-1.8-openjdk/bin
+ENV JAVA_VERSION 8u131
+ENV JAVA_ALPINE_VERSION 8.131.11-r2
 
-# install node.js
-RUN ARCH= && dpkgArch="$(dpkg --print-architecture)" \
-  && case "${dpkgArch##*-}" in \
-    amd64) ARCH='x64';; \
-    ppc64el) ARCH='ppc64le';; \
-    s390x) ARCH='s390x';; \
-    arm64) ARCH='arm64';; \
-    *) echo "unsupported architecture"; exit 1 ;; \
-  esac \
-  # gpg keys listed at https://github.com/nodejs/node#release-team
-  && for key in \
-    94AE36675C464D64BAFA68DD7434390BDBE9B9C5 \
-    FD3A5288F042B6850C66B31F09FE44734EB7990E \
-    71DCFD284A79C3B38668286BC97EC7A07EDE3FC1 \
-    DD8F2338BAE7501E3DD5AC78C273792F7D83545D \
-    C4F0DFFF4E8C1A8236409D08E73BC641CC11F4C8 \
-    B9AE9905FFD7803F25714661B63B535A4C206CA9 \
-    56730D5401028683275BD23C23EFEFE93C4CFFFE \
-    77984A986EBC2AA786BC0F66B01FBB92821C587A \
-  ; do \
-    gpg --keyserver pgp.mit.edu --recv-keys "$key" || \
-    gpg --keyserver keyserver.pgp.com --recv-keys "$key" || \
-    gpg --keyserver ha.pool.sks-keyservers.net --recv-keys "$key" ; \
-  done \
-    && curl -SLO "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-$ARCH.tar.xz" \
-    && curl -SLO --compressed "https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt.asc" \
-    && gpg --batch --decrypt --output SHASUMS256.txt SHASUMS256.txt.asc \
-    && grep " node-v$NODE_VERSION-linux-$ARCH.tar.xz\$" SHASUMS256.txt | sha256sum -c - \
-    && tar -xJf "node-v$NODE_VERSION-linux-$ARCH.tar.xz" -C /usr/local --strip-components=1 \
-    && rm "node-v$NODE_VERSION-linux-$ARCH.tar.xz" SHASUMS256.txt.asc SHASUMS256.txt \
-    && ln -s /usr/local/bin/node /usr/local/bin/nodejs
+RUN set -x \
+	&& apk add --no-cache \
+		openjdk8="$JAVA_ALPINE_VERSION" \
+	&& [ "$JAVA_HOME" = "$(docker-java-home)" ]
 
-# Install Chrome
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-  && echo "deb https://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
-  && apt-get update -y \
-  && apt-get -y install \
-    google-chrome-stable --no-install-recommends \
-  && rm /etc/apt/sources.list.d/google-chrome.list \
-  && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+ENV DIGDAG_VERSION=0.9.21
+
+RUN apk add --no-cache curl && \
+    curl -o /usr/bin/digdag --create-dirs -L "https://dl.digdag.io/digdag-$DIGDAG_VERSION" && \
+    chmod +x /usr/bin/digdag && \
+    apk del curl && \
+    adduser -h /var/lib/digdag -g 'digdag user' -s /sbin/nologin -D digdag && \
+    mkdir -p /var/lib/digdag/logs/tasks /var/lib/digdag/logs/server && \
+    chown -R digdag.digdag /var/lib/digdag && \
+    apk --no-cache update && \
+    apk add --no-cache python3 && \
+    python3 -m ensurepip && \
+    rm -r /usr/lib/python*/ensurepip && \
+    pip3 install --upgrade pip setuptools && \
+    if [ ! -e /usr/bin/pip ]; then ln -s pip3 /usr/bin/pip ; fi && \
+    if [[ ! -e /usr/bin/python ]]; then ln -sf /usr/bin/python3 /usr/bin/python; fi && \
+    apk --no-cache add ca-certificates curl groff less tzdata && \
+    cp /usr/share/zoneinfo/Asia/Tokyo /etc/localtime && \
+    apk del tzdata && \
+    apk --no-cache add bash jq && \
+    pip --no-cache-dir install --upgrade pip && \
+    rm -rf /var/cache/apk/*
